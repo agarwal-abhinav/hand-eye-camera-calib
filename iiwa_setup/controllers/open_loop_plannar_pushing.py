@@ -179,6 +179,11 @@ class OpenLoopPlanarPushingPlanner(LeafSystem):
             num_joint_positions,
             self._get_current_iiwa_positions,
         )
+        self.DeclareVectorOutputPort(
+            "FSM_state", 
+            1, 
+            self._get_current_FSM_state,
+        )
 
         self.DeclareInitializationDiscreteUpdateEvent(self._initialize_discrete_state)
         # Run FSM logic before every trajectory-advancing step
@@ -234,6 +239,12 @@ class OpenLoopPlanarPushingPlanner(LeafSystem):
             self._current_iiwa_positions_idx
         ).get_value()
         output.set_value(positions)
+
+    def _get_current_FSM_state(
+        self, context: Context, output: BasicVector
+    ) -> None:
+        state = context.get_abstract_state(self._fsm_state_idx).get_value()
+        output.set_value(np.array([state.value]))
 
     def _initialize_discrete_state(
         self, context: Context, discrete_values: DiscreteValues
@@ -431,6 +442,11 @@ class OpenLoopPlanarPushingController(Diagram):
         builder.ExportInput(
             self._planer.GetInputPort("iiwa.position_measured"),
             "iiwa.position_measured",
+        )
+        
+        builder.ExportOutput(
+            self._planer.GetOutputPort("FSM_state"),
+            "FSM_state",
         )
 
         joint_traj_source: TrajectoryWithTimingInformationSource = (

@@ -19,6 +19,7 @@ from iiwa_setup.util import NoDrakeDifferentialIKFilter
 
 from manipulation.meshcat_utils import WsgButton
 
+import time
 
 def main(
     scenario_str: str,
@@ -84,6 +85,12 @@ def main(
         and not controller.is_finished()
     ):
         simulator.AdvanceTo(context.get_time() + 0.1)
+        if controller.GetOutputPort("FSM_state").Eval(controller.GetMyMutableContextFromRoot(context)) == 3: 
+            time.sleep(1)
+
+        # time.sleep(0.5)
+        # print(controller.GetOutputPort("FSM_state").Eval(controller.GetMyMutableContextFromRoot(context)))
+        # time.sleep(0.5)
     station.internal_meshcat.DeleteButton("Stop Simulation")
     visualizer.StopRecording()
     visualizer.PublishRecording()
