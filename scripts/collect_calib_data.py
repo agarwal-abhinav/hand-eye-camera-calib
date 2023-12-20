@@ -17,6 +17,8 @@ from iiwa_setup.controllers import OpenLoopPlanarPushingController
 from iiwa_setup.iiwa import IiwaHardwareStationDiagram
 from iiwa_setup.util import NoDrakeDifferentialIKFilter
 
+from manipulation.meshcat_utils import WsgButton
+
 
 def main(
     scenario_str: str,
@@ -33,7 +35,7 @@ def main(
     station: IiwaHardwareStationDiagram = builder.AddNamedSystem(
         "station",
         IiwaHardwareStationDiagram(
-            scenario=scenario, has_wsg=False, use_hardware=use_hardware
+            scenario=scenario, has_wsg=True, use_hardware=use_hardware
         ),
     )
 
@@ -60,6 +62,9 @@ def main(
         controller.GetOutputPort("iiwa.position"),
         station.GetInputPort("iiwa.position"),
     )
+
+    wsg_teleop = builder.AddSystem(WsgButton(station.internal_meshcat))
+    builder.Connect(wsg_teleop.get_output_port(0), station.GetInputPort("wsg.position"))
 
     visualizer = MeshcatVisualizer.AddToBuilder(
         builder, station.GetOutputPort("query_object"), station.internal_meshcat
@@ -116,31 +121,82 @@ if __name__ == "__main__":
     logging.basicConfig(level=args.log_level)
     logging.getLogger("drake").addFilter(NoDrakeDifferentialIKFilter())
 
-    scenario_str = f"""
+    # scenario_str = f"""
+    # directives:
+    # - add_directives:
+    #     file: package://iiwa_setup/iiwa7_with_planar_pusher.dmd.yaml
+    # plant_config:
+    #     # Cannot use bigger timesteps on the real robot
+    #     time_step: 0.001
+    #     contact_model: "hydroelastic"
+    #     discrete_contact_solver: "sap"
+    # model_drivers:
+    #     iiwa: !IiwaDriver {{}}
+    # """
+
+    scenario_data = (
+        """
     directives:
     - add_directives:
-        file: package://iiwa_setup/iiwa7_with_planar_pusher.dmd.yaml
+        file: package://manipulation/iiwa_and_wsg.dmd.yaml
     plant_config:
-        # Cannot use bigger timesteps on the real robot
-        time_step: 0.001
+        time_step: 0.005
         contact_model: "hydroelastic"
         discrete_contact_solver: "sap"
     model_drivers:
-        iiwa: !IiwaDriver {{}}
+        iiwa: !IiwaDriver
+            hand_model_name: wsg
+        wsg: !SchunkWsgDriver {}
     """
-    
+        if True
+        else """
+    directives:
+    - add_directives:
+        file: package://iiwa_setup/iiwa7.dmd.yaml
+    plant_config:
+        # For some reason, this requires a small timestep
+        time_step: 0.0001
+        contact_model: "hydroelastic"
+        discrete_contact_solver: "sap"
+    model_drivers:
+        iiwa: !IiwaDriver {}
+    """
+    )
 
-    poses = [
-        RigidTransform(RollPitchYaw(np.pi, 0.0, -np.pi), [0.4, 0.0, 0.175]),
-        RigidTransform(RollPitchYaw(np.pi, 0.0, -np.pi), [0.5, 0.0, 0.175]),
-        RigidTransform(RollPitchYaw(np.pi, 0.0, -np.pi), [0.6, 0.0, 0.175]),
-        RigidTransform(RollPitchYaw(np.pi, 0.0, -np.pi), [0.7, 0.0, 0.175]),
-        RigidTransform(RollPitchYaw(np.pi, 0.0, -np.pi), [0.75, 0.0, 0.175]),
-    ]
+    trans_positions = [0.5, 0., 0.55]
+    trans_positions_overall = [trans_positions]
+
+    for i in range(3): 
+        cur = trans_positions_overall[-1].copy()
+        cur[1] += 0.1
+        trans_positions_overall.append(cur)
+
+    cur = trans_positions_overall[-1].copy()
+    cur[2] -= 0.1
+    trans_positions_overall.append(cur)
+
+    for i in range(6): 
+        cur = trans_positions_overall[-1].copy()
+        cur[1] -= 0.1
+        trans_positions_overall.append(cur)
+
+    cur = trans_positions_overall[-1].copy()
+    cur[2] += 0.1
+    trans_positions_overall.append(cur)
+
+    for i in range(3): 
+        cur = trans_positions_overall[-1].copy()
+        cur[1] += 0.1
+        trans_positions_overall.append(cur)
+
+    poses = []
+
+    for i in range(len(trans_positions_overall)): 
+        poses.append(RigidTransform(RollPitchYaw(np.pi, 0.6, -np.pi), trans_positions_overall[i]))
 
     # Rotate the gripper by 90 degrees around yaw in the gripper frame
-    X_GG1 = RigidTransform(RollPitchYaw(0.0, 0.0, np.pi / 2.0), np.zeros(3))
-    poses = [pose @ X_GG1 for pose in poses]
+    # X_GG1 = RigidTransform(RollPitchYaw(0.0, 0.0, np.pi / 2.0), np.zeros(3))
+    # poses = [pose @ X_GG1 for pose in poses]
 
     pushing_pose_traj = PiecewisePose.MakeLinear(
         times=np.arange(len(poses)),
@@ -148,7 +204,7 @@ if __name__ == "__main__":
     )
 
     main(
-        scenario_str=scenario_str,
+        scenario_str=scenario_data,
         use_hardware=args.use_hardware,
         html_path=args.html_path,
         pushing_start_pose=poses[0],
